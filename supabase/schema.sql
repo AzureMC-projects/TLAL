@@ -30,7 +30,11 @@ create table if not exists public.runs (
   version text not null check (char_length(version) between 1 and 40),
   proof_url text not null check (proof_url ~ '^https?://'),
   notes text check (notes is null or char_length(notes) <= 1000),
-  status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  title text not null default '' check (char_length(title) <= 80),
+  description text not null default '' check (char_length(description) <= 500),
+  platform text check (platform is null or platform in ('PC','PlayStation','Xbox','Other')),
+  tags text[] not null default '{}' check (cardinality(tags) <= 5),
+  status text not null default 'pending' check (status in ('pending','approved','rejected','removed')),
   review_note text check (review_note is null or char_length(review_note) <= 1000),
   reviewed_by uuid references public.profiles(id) on delete set null,
   reviewed_at timestamptz,
@@ -83,6 +87,9 @@ create policy "Approved runs are public" on public.runs for select to anon,authe
 drop policy if exists "Signed-in users can submit their own pending runs" on public.runs;
 create policy "Signed-in users can submit their own pending runs" on public.runs for insert to authenticated
   with check (user_id=(select auth.uid()) and status='pending' and reviewed_by is null and reviewed_at is null);
+drop policy if exists "Runners can customise their own run metadata" on public.runs;
+create policy "Runners can customise their own run metadata" on public.runs for update to authenticated
+  using (user_id=(select auth.uid())) with check (user_id=(select auth.uid()));
 drop policy if exists "Moderators can review runs" on public.runs;
 create policy "Moderators can review runs" on public.runs for update to authenticated
   using (exists(select 1 from public.profiles p where p.id=(select auth.uid()) and p.role in ('moderator','admin')))
@@ -94,3 +101,4 @@ grant select on public.profiles to anon,authenticated;
 grant select on public.runs to anon,authenticated;
 grant insert on public.runs to authenticated;
 grant update(status,review_note,reviewed_by,reviewed_at) on public.runs to authenticated;
+grant update(title,description,platform,tags) on public.runs to authenticated;
