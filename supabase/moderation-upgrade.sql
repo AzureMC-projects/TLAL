@@ -52,7 +52,9 @@ using (exists(select 1 from public.profiles p where p.id=(select auth.uid()) and
 revoke all on public.moderation_audit from anon, authenticated;
 grant select on public.moderation_audit to authenticated;
 revoke all on public.user_bans from anon, authenticated;
-grant select, insert, update on public.user_bans to authenticated;
+grant select on public.user_bans to authenticated;
+grant insert(user_id,reason,created_by,expires_at,is_active) on public.user_bans to authenticated;
+grant update(is_active,ended_at,ended_by) on public.user_bans to authenticated;
 
 -- Existing users can submit only if they are not currently banned.
 drop policy if exists "Signed-in users can submit their own pending runs" on public.runs;
@@ -109,7 +111,7 @@ begin
     end if;
   end if;
   insert into public.moderation_audit(actor_id,action,target_user_id,run_id,reason,details)
-  values(actor,target_user, target_run, action_name, why, detail);
+  values(actor,action_name,target_user,target_run,why,detail);
   return new;
 end;
 $$;
@@ -142,7 +144,7 @@ begin
      (select count(*) from public.profiles where role='admin') <= 1 then
     raise exception 'Cannot remove the last admin' using errcode='23514';
   end if;
-  update public.profiles set role=new_role where id=target_user_id;
+  update public.profiles as p set role=new_role where p.id=admin_set_profile_role.target_user_id;
   if not found then raise exception 'Profile not found' using errcode='P0002'; end if;
 end;
 $$;
