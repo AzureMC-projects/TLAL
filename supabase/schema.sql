@@ -19,7 +19,7 @@ create trigger on_auth_user_created_tlal after insert on auth.users for each row
 alter table public.profiles enable row level security;
 alter table public.runs enable row level security;
 create policy "Profiles are viewable by everyone" on public.profiles for select to anon,authenticated using(true);
-create policy "Users can update their own profile" on public.profiles for update to authenticated using((select auth.uid())=id) with check((select auth.uid())=id and role=(select p.role from public.profiles p where p.id=(select auth.uid())));
+create policy "Users can update their own profile" on public.profiles for update to authenticated using((select auth.uid())=id) with check((select auth.uid())=id);
 create policy "Approved runs are public" on public.runs for select to anon,authenticated using(status='approved' or user_id=(select auth.uid()) or exists(select 1 from public.profiles p where p.id=(select auth.uid()) and p.role in ('moderator','admin')));
 create policy "Signed-in users can submit their own pending runs" on public.runs for insert to authenticated with check(user_id=(select auth.uid()) and status='pending' and reviewed_by is null and reviewed_at is null);
 create policy "Moderators can review runs" on public.runs for update to authenticated using(exists(select 1 from public.profiles p where p.id=(select auth.uid()) and p.role in ('moderator','admin'))) with check(exists(select 1 from public.profiles p where p.id=(select auth.uid()) and p.role in ('moderator','admin')));
