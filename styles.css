@@ -38,3 +38,18 @@
 .staff-run-actions .staff-btn{width:100%;min-height:40px}
 @media(max-width:760px){.staff-run-card{display:flex;flex-direction:column;padding:14px;gap:14px}.staff-run-actions{border-left:0;border-top:1px solid #303034;padding:13px 0 0;flex-direction:row}.staff-run-actions .staff-btn{width:auto;flex:1}.staff-run-facts{grid-template-columns:repeat(2,minmax(0,1fr))}.profile-run-video{max-width:none}}
 @media(max-width:480px){.public-runs-heading{align-items:flex-start;flex-direction:column}.verified-label{font-size:8px}.public-run-row{grid-template-columns:1fr auto}.public-run-row .verified-label{grid-column:1/-1;width:max-content}}
+
+/* Native decision dialog for moderation review */
+.review-dialog{width:min(560px,calc(100% - 28px));padding:0;background:#171719;color:#f6f3f0;border:1px solid #5a393d;box-shadow:0 25px 100px #000b}
+.review-dialog::backdrop{background:#050506d9;backdrop-filter:blur(5px)}
+.review-dialog form{display:grid;gap:14px;padding:24px}
+.review-dialog-kicker{font-size:9px;letter-spacing:1.4px;color:#ff827c;font-weight:700}
+.review-dialog h2{font:800 36px/1 var(--head);margin:0}
+.review-dialog h2 em{color:var(--red);font-style:normal}
+.review-dialog p{margin:0;color:#aaa;font-size:12px;line-height:1.7}
+.review-dialog label{display:flex;flex-direction:column;gap:7px;font-size:11px;font-weight:700}
+.review-dialog textarea{resize:vertical;min-height:100px}
+.review-dialog label small{font-size:10px;color:#9a959c;font-weight:400}
+.review-dialog label.required-note small{color:#ffaaa6}
+.review-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:5px}
+@media(max-width:480px){.review-dialog form{padding:17px}.review-dialog-actions{flex-direction:column-reverse}.review-dialog-actions button{width:100%}}
