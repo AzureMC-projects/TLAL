@@ -1,0 +1,69 @@
+import {createClient} from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import {SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY} from "./config.js";
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const ready=!!(SUPABASE_URL&&SUPABASE_PUBLISHABLE_KEY),db=ready?createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY):null;
+let user=null,profile=null,profiles=[],runs=[],bans=[],audit=[];
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const chapter=c=>({"chapter-1":"Chapter 1","chapter-2":"Chapter 2","chapter-3":"Chapter 3","chapter-4":"Chapter 4","chapter-5":"Chapter 5"}[c]||c);
+const fmtDate=d=>d?new Date(d).toLocaleString():"Never";
+const isActive=b=>b.is_active&&(!b.expires_at||new Date(b.expires_at)>new Date());
+function toast(s){const el=$("#toast");el.textContent=s;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),3200)}
+function setNotice(s,type=""){const el=$("#staff-notice");el.textContent=s;el.className="staff-notice"+(type?" "+type:"")}
+async function init(){if(!ready){setNotice("Supabase is not configured. Staff tools require a connected backend.","error");$("#staff-identity").textContent="Not connected";return}
+ const {data,error}=await db.auth.getSession();if(error){setNotice(error.message,"error");return}user=data.session?.user;
+ if(!user){setNotice("Sign in from the public site first, then open the staff console. Staff access is checked against your database role.","error");$("#staff-identity").textContent="Not signed in";return}
+ const r=await db.from("profiles").select("id,runner_name,display_name,role").eq("id",user.id).maybeSingle();
+ if(r.error||!r.data){setNotice("Could not verify your staff profile: "+(r.error?.message||"Profile missing"),"error");return}
+ profile=r.data;$("#staff-identity").textContent=(profile.display_name||profile.runner_name)+" · "+profile.role.toUpperCase();
+ if(!["moderator","admin"].includes(profile.role)){setNotice("Access denied. This account does not have moderator or admin permissions.","error");return}
+ $("#staff-workspace").classList.remove("hidden");$("#staff-signout").classList.remove("hidden");$("#admin-tab").classList.toggle("hidden",profile.role!=="admin");
+ setNotice("Staff access verified. All moderation actions are subject to database permissions.","success");
+ await refreshAll();
+}
+async function refreshAll(){if(!profile)return;$("#staff-refresh").disabled=true;
+ try{
+  const [rr,pr,br,ar]=await Promise.all([
+   db.from("runs").select("id,user_id,chapter,category,run_time_ms,version,proof_url,notes,status,review_note,created_at,reviewed_at,reviewed_by").order("created_at",{ascending:false}).limit(500),
+   db.from("profiles").select("id,runner_name,display_name,role,created_at").order("created_at",{ascending:false}).limit(500),
+   db.from("user_bans").select("id,user_id,reason,created_by,expires_at,is_active,created_at,ended_at,ended_by").order("created_at",{ascending:false}).limit(500),
+   db.from("moderation_audit").select("id,actor_id,action,target_user_id,run_id,reason,details,created_at").order("created_at",{ascending:false}).limit(100)
+  ]);
+  for(const x of [rr,pr,br,ar])if(x.error)throw x.error;
+  runs=rr.data||[];profiles=pr.data||[];bans=br.data||[];audit=ar.data||[];
+  renderStats();renderPending();renderAllRuns();renderUsers();renderAudit();renderRoles();
+ }catch(e){setNotice("Could not load staff data: "+e.message+" — confirm you ran supabase/moderation-upgrade.sql.","error")}
+ finally{$("#staff-refresh").disabled=false}
+}
+function profileMap(){return Object.fromEntries(profiles.map(p=>[p.id,p]))}
+function runCard(r,queue=false){const p=profileMap()[r.user_id]||{},status=r.status||"unknown";
+ const actions=status==="pending"?'<button class="staff-btn primary" data-action="approve" data-id="'+r.id+'">Approve</button><button class="staff-btn" data-action="reject" data-id="'+r.id+'">Reject</button>':
+ status==="approved"?'<button class="staff-btn danger" data-action="remove" data-id="'+r.id+'">Take down</button>':
+ status==="removed"?'<button class="staff-btn primary" data-action="restore" data-id="'+r.id+'">Restore to board</button>':
+ status==="rejected"?'<button class="staff-btn" data-action="approve" data-id="'+r.id+'">Approve anyway</button>':'';
+ return '<article class="staff-item"><div class="staff-item-main"><div class="staff-item-title"><strong>'+esc(p.runner_name||"Unknown runner")+'</strong><span class="status-pill status-'+esc(status)+'">'+esc(status)+'</span></div><p>'+esc(chapter(r.chapter))+' · '+esc(r.category)+' · <b>'+esc(formatTime(r.run_time_ms))+'</b> · v'+esc(r.version)+'</p><p class="staff-muted">'+esc(r.notes||"No submission notes")+'</p><div class="staff-item-meta">Submitted '+esc(fmtDate(r.created_at))+(r.review_note?' · Note: '+esc(r.review_note):"")+'</div><a class="proof" href="'+esc(r.proof_url)+'" target="_blank" rel="noreferrer">Open video proof ↗</a></div><div class="staff-actions">'+actions+'</div></article>';
+}
+function formatTime(ms){let t=Number(ms),h=Math.floor(t/3600000);t-=h*3600000;let m=Math.floor(t/60000);t-=m*60000;return(h?String(h).padStart(2,"0")+":":"")+String(m).padStart(2,"0")+":"+String(Math.floor(t/1000)).padStart(2,"0")+"."+String(Math.floor(t%1000)).padStart(3,"0")}
+function renderStats(){$("#stat-pending").textContent=runs.filter(r=>r.status==="pending").length;$("#stat-approved").textContent=runs.filter(r=>r.status==="approved").length;$("#stat-bans").textContent=bans.filter(isActive).length;$("#stat-users").textContent=profiles.length}
+function renderPending(){const list=runs.filter(r=>r.status==="pending");$("#pending-count").textContent=list.length+" pending";$("#pending-runs").innerHTML=list.length?list.map(r=>runCard(r,true)).join(""):'<div class="staff-empty">Queue clear. No runs are waiting for review.</div>'}
+function renderAllRuns(){let f=$("#run-status-filter").value,list=runs.filter(r=>f==="all"||r.status===f);$("#all-runs").innerHTML=list.length?list.map(r=>runCard(r)).join(""):'<div class="staff-empty">No runs found for this status.</div>'}
+function renderUsers(){let q=$("#user-search").value.trim().toLowerCase(),map=profileMap();let list=profiles.filter(p=>(p.runner_name+" "+p.display_name).toLowerCase().includes(q));$("#users-list").innerHTML=list.map(p=>{const userBans=bans.filter(b=>b.user_id===p.id),active=userBans.filter(isActive),last=active[0];let canBan=p.id!==user.id;return '<article class="staff-item"><div class="staff-item-main"><div class="staff-item-title"><strong>'+esc(p.display_name||p.runner_name)+'</strong><span class="role-pill role-'+esc(p.role)+'">'+esc(p.role)+'</span>'+(active.length?'<span class="status-pill status-rejected">BANNED</span>':'')+'</div><p>@'+esc(p.runner_name)+' · joined '+esc(fmtDate(p.created_at))+'</p>'+(last?'<p class="staff-muted">Ban reason: '+esc(last.reason)+' · expires '+esc(fmtDate(last.expires_at))+'</p>':'<p class="staff-muted">No active ban</p>')+'<p class="staff-item-meta">'+userBans.length+' ban record(s)</p></div><div class="staff-actions">'+(active.map(b=>'<button class="staff-btn" data-action="unban" data-id="'+b.id+'">Lift ban</button>').join(""))+(canBan?'<button class="staff-btn danger" data-action="ban" data-id="'+p.id+'">Ban user</button>':'<span class="staff-muted">Your account</span>')+'</div></article>'}).join("")||'<div class="staff-empty">No matching accounts.</div>'}
+function renderAudit(){const map=profileMap();$("#audit-list").innerHTML=audit.length?audit.map(a=>'<article class="audit-item"><div><strong>'+esc(a.action.replaceAll("_"," "))+'</strong><p>'+esc(a.reason||a.details?.previous_status&&("Status changed from "+a.details.previous_status+" to "+a.details.new_status)||"No reason recorded")+'</p></div><div><b>'+esc(map[a.actor_id]?.runner_name||"System / unknown")+'</b><small>'+esc(a.target_user_id?("@"+(map[a.target_user_id]?.runner_name||"user")):"")+(a.run_id?" · run "+a.run_id.slice(0,8):"")+'</small><small>'+esc(fmtDate(a.created_at))+'</small></div></article>').join(""):'<div class="staff-empty">No moderation actions have been logged yet.</div>'}
+function renderRoles(){if(profile.role!=="admin")return;$("#roles-list").innerHTML=profiles.map(p=>'<article class="staff-item"><div class="staff-item-main"><div class="staff-item-title"><strong>'+esc(p.display_name||p.runner_name)+'</strong><span class="role-pill role-'+esc(p.role)+'">'+esc(p.role)+'</span></div><p>@'+esc(p.runner_name)+' · '+esc(p.id)+'</p></div><div class="staff-actions"><select class="role-select" data-role-user="'+p.id+'" aria-label="Role for '+esc(p.runner_name)+'"><option value="runner" '+(p.role==="runner"?"selected":"")+'>Runner</option><option value="moderator" '+(p.role==="moderator"?"selected":"")+'>Moderator</option><option value="admin" '+(p.role==="admin"?"selected":"")+'>Admin</option></select></div></article>').join("")}
+async function runAction(btn){const id=btn.dataset.id,action=btn.dataset.action,r=runs.find(x=>x.id===id);if(!r)return;
+ let status,reason="";
+ if(action==="approve"){status="approved";reason=prompt("Optional moderator note for this approval:","")??null;if(reason===null)return}
+ if(action==="reject"){status="rejected";reason=prompt("Reason for rejecting this run (required):","");if(!reason||reason.trim().length<3){toast("Enter a rejection reason of at least 3 characters.");return}}
+ if(action==="remove"){status="removed";reason=prompt("Why is this run being taken down? (required):","");if(!reason||reason.trim().length<3){toast("Enter a takedown reason of at least 3 characters.");return}}
+ if(action==="restore"){status="approved";reason=prompt("Reason for restoring this run (required):","Restored after review");if(!reason||reason.trim().length<3){toast("Enter a reason of at least 3 characters.");return}}
+ btn.disabled=true;try{const {data,error}=await db.from("runs").update({status,review_note:reason.trim()||null,reviewed_by:user.id,reviewed_at:new Date().toISOString()}).eq("id",id).select("id");if(error)throw error;if(!data?.length)throw Error("No run changed. Your role may not have permission, or the run was changed elsewhere.");toast("Run status updated: "+status);await refreshAll()}catch(e){toast("Action failed: "+e.message)}finally{btn.disabled=false}}
+async function banAction(btn){const id=btn.dataset.id,active=bans.find(b=>b.id===id);btn.disabled=true;try{
+ if(active){if(!confirm("Lift this ban? The account can submit runs again if no other active ban applies."))return;const {error}=await db.from("user_bans").update({is_active:false,ended_at:new Date().toISOString(),ended_by:user.id}).eq("id",id).eq("is_active",true);if(error)throw error;toast("Ban lifted")}
+ else{const target=profiles.find(p=>p.id===id);if(!target)return;const reason=prompt("Reason for banning @"+target.runner_name+" (required):","");if(!reason||reason.trim().length<3){toast("Enter a ban reason of at least 3 characters.");return}const days=prompt("Ban length in days. Enter 0 for permanent ban:","7");if(days===null)return;const n=Number(days);if(!Number.isInteger(n)||n<0||n>36500){toast("Enter 0 for permanent or a whole number of days.");return}if(!confirm("Confirm "+(n===0?"permanent":n+" day")+" ban for @"+target.runner_name+"?"))return;const {error}=await db.from("user_bans").insert({user_id:id,reason:reason.trim(),created_by:user.id,expires_at:n===0?null:new Date(Date.now()+n*86400000).toISOString(),is_active:true});if(error)throw error;toast("Ban issued")}
+ await refreshAll();
+ }catch(e){toast("Ban action failed: "+e.message)}finally{btn.disabled=false}}
+async function roleAction(sel){const id=sel.dataset.roleUser,role=sel.value,p=profiles.find(x=>x.id===id);if(!p||p.role===role)return;if(!confirm("Change @"+p.runner_name+" from "+p.role+" to "+role+"?")){sel.value=p.role;return}sel.disabled=true;try{const {error}=await db.rpc("admin_set_profile_role",{target_user_id:id,new_role:role});if(error)throw error;toast("Staff role updated");await refreshAll();if(id===user.id){await init()}}catch(e){toast("Role change failed: "+e.message);sel.value=p.role}finally{sel.disabled=false}}
+$$(".staff-tabs [data-tab]").forEach(b=>b.addEventListener("click",()=>{if(b.classList.contains("hidden"))return;$$(".staff-tabs [data-tab]").forEach(x=>x.classList.toggle("active",x===b));["review","runs","users","audit","roles"].forEach(t=>$("#tab-"+t).classList.toggle("hidden",t!==b.dataset.tab))}));
+document.addEventListener("click",e=>{const b=e.target.closest("[data-action]");if(!b)return;if(["approve","reject","remove","restore"].includes(b.dataset.action))runAction(b);if(["ban","unban"].includes(b.dataset.action))banAction(b)});
+$("#run-status-filter").addEventListener("change",renderAllRuns);$("#user-search").addEventListener("input",renderUsers);$("#staff-refresh").addEventListener("click",refreshAll);$("#roles-list").addEventListener("change",e=>{if(e.target.matches("[data-role-user]"))roleAction(e.target)});
+$("#staff-signout").addEventListener("click",async()=>{await db.auth.signOut();location.href="index.html"});
+init();
