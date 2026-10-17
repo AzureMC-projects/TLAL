@@ -70,3 +70,7 @@ From the repository directory, run python -m http.server 8000, then open http://
 ## Disclaimer
 
 TLAL is an independent fan-made community leaderboard. Poppy Playtime and related intellectual property belong to their respective rights holders. No official affiliation is claimed.
+
+### Run customisation
+
+Apply `supabase/run-customisation.sql` if you are setting up the run customisation feature manually. Runners can edit title, description, platform, and tags from their own profile. Core run facts and moderation status remain restricted to staff workflows.
