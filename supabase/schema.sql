@@ -11,7 +11,11 @@ begin
  n:=coalesce(nullif(trim(new.raw_user_meta_data->>'runner_name'),''),'runner_'||substr(new.id::text,1,8));
  n:=substr(regexp_replace(n,'[^a-zA-Z0-9_ -]','','g'),1,24);
  if char_length(n)<2 then n:='runner_'||substr(new.id::text,1,8); end if;
- insert into public.profiles(id,runner_name,role) values(new.id,n,'runner') on conflict(id) do nothing;
+ insert into public.profiles(id,runner_name,role) values(new.id,n,'runner') on conflict do nothing;
+ if not found then
+   n:='runner_'||substr(new.id::text,1,8);
+   insert into public.profiles(id,runner_name,role) values(new.id,n,'runner') on conflict(id) do nothing;
+ end if;
  return new;
 end; $$;
 drop trigger if exists on_auth_user_created_tlal on auth.users;
