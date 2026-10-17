@@ -13,6 +13,13 @@ Dark horror-inspired speedrun leaderboards for the Poppy Playtime fan game The L
 - Database schema and Row Level Security policies.
 - Clearly labelled sample preview until Supabase is configured.
 
+## Standalone profiles and moderation
+
+- Public runner pages use `profile.html?runner=<runner_handle>` and show approved runs, bio, social links, profile banner, avatar, pronouns, country and accent theme.
+- Run `supabase/profile-customisation.sql` in the Supabase SQL Editor to add banner, pronouns, Discord and accent-theme columns. Existing profile fields are already in `supabase/schema.sql`.
+- The homepage links to individual profiles; the editor is on the runner's own profile page.
+- Staff moderation lives at `moderation.html`. Run `supabase/moderation-upgrade.sql` for takedowns, bans, audit history and admin role controls before using those features.
+
 ## 1. GitHub Pages
 
 Open https://github.com/AzureMC-projects/TLAL/settings/pages. Choose **Deploy from a branch**, branch **main**, folder **/(root)**, then save. Expected URL: https://azuremc-projects.github.io/TLAL/
